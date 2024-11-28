@@ -1,12 +1,12 @@
-
 import React, { useState } from "react";
 import Papa from "papaparse";
 import axios from "axios";
+import * as XLSX from "xlsx"; // Library for Excel file parsing
 
 const UploadBulkData = () => {
   const [selectedOption, setSelectedOption] = useState("");
-  const [csvFile, setCsvFile] = useState(null);
-  const [jsonData, setJsonData] = useState([]);
+  const [file, setFile] = useState(null);
+  const [dataArray, setDataArray] = useState([]);
   const [errors, setErrors] = useState([]);
   const [isHeaderSkipped, setIsHeaderSkipped] = useState(false);
 
@@ -19,30 +19,86 @@ const UploadBulkData = () => {
 
   // Handle file selection
   const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    setCsvFile(file);
+    const selectedFile = event.target.files[0];
+    setFile(selectedFile);
     setErrors([]);
   };
 
   // Parse CSV file
   const parseCSV = () => {
-    if (!csvFile) {
+    if (!file) {
       setErrors(["Please upload a CSV file."]);
       return;
     }
 
-    Papa.parse(csvFile, {
+    Papa.parse(file, {
       header: isHeaderSkipped,
       skipEmptyLines: true,
       complete: (result) => {
         if (result.errors.length) {
           setErrors(result.errors.map((err) => `Row ${err.row}: ${err.message}`));
         } else {
-          setJsonData(result.data);
+          const data = result.data.map((row) => ({
+            ...row,
+            createdAt: new Date().toISOString(),
+            
+            deletedAt: new Date().toISOString(),
+          }));
+          setDataArray(data);
           setErrors([]);
         }
       },
     });
+  };
+
+  // Parse JSON file
+  const parseJSON = () => {
+    if (!file) {
+      setErrors(["Please upload a JSON file."]);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsedData = JSON.parse(reader.result);
+        const data = parsedData.map((item) => ({
+          ...item,
+          createdAt: new Date().toISOString(),
+          deletedAt: null,
+        }));
+        setDataArray(data);
+        setErrors([]);
+      } catch (error) {
+        setErrors(["Failed to parse JSON file."]);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Parse Excel file
+  const parseExcel = () => {
+    if (!file) {
+      setErrors(["Please upload an Excel file."]);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const workbook = XLSX.read(reader.result, { type: "binary" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+      const data = jsonData.map((row) => ({
+        ...row,
+        createdAt: new Date().toISOString(),
+        deletedAt: null,
+      }));
+      setDataArray(data);
+      setErrors([]);
+    };
+    reader.readAsBinaryString(file);
   };
 
   // Upload data
@@ -52,15 +108,18 @@ const UploadBulkData = () => {
       return;
     }
 
-    if (!jsonData.length) {
-      setErrors(["No valid data found. Please upload and parse a valid CSV file."]);
+    if (!dataArray.length) {
+      setErrors(["No valid data found. Please upload and parse a valid file."]);
       return;
     }
 
     try {
-      const response = await axios.post(apiEndpoints[selectedOption], jsonData, {
-        headers: { "Content-Type": "application/json" },
-      });
+      for (const record of dataArray) {
+        const response = await axios.post(apiEndpoints[selectedOption], record, {
+          headers: { "Content-Type": "application/json" },
+        });
+        console.log("Record uploaded:", response.data);
+      }
       alert(`Data uploaded successfully!`);
     } catch (error) {
       setErrors([error.response?.data?.message || "An error occurred while uploading data."]);
@@ -89,24 +148,24 @@ const UploadBulkData = () => {
 
       {/* Upload Section */}
       <div className="bg-white p-6 shadow rounded-md w-96">
-        <h2 className="text-lg font-bold mb-4">Upload CSV</h2>
+        <h2 className="text-lg font-bold mb-4">Upload File</h2>
         <div
           className="border-2 border-dashed border-gray-300 rounded-lg h-32 flex justify-center items-center mb-4"
           onDrop={(e) => {
             e.preventDefault();
-            setCsvFile(e.dataTransfer.files[0]);
+            setFile(e.dataTransfer.files[0]);
           }}
           onDragOver={(e) => e.preventDefault()}
         >
-          {csvFile ? (
-            <p className="text-gray-500">{csvFile.name}</p>
+          {file ? (
+            <p className="text-gray-500">{file.name}</p>
           ) : (
             <p className="text-gray-400">Drag and drop files here or click below</p>
           )}
         </div>
         <input
           type="file"
-          accept=".csv"
+          accept=".csv,.json,.xlsx"
           onChange={handleFileChange}
           className="mb-4"
         />
@@ -121,13 +180,21 @@ const UploadBulkData = () => {
         <div className="flex justify-between">
           <button
             className="px-4 py-2 bg-gray-400 text-white rounded-md hover:bg-gray-500"
-            onClick={() => setCsvFile(null)}
+            onClick={() => setFile(null)}
           >
             Cancel
           </button>
           <button
             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-            onClick={parseCSV}
+            onClick={() => {
+              if (file.name.endsWith(".csv")) {
+                parseCSV();
+              } else if (file.name.endsWith(".json")) {
+                parseJSON();
+              } else if (file.name.endsWith(".xlsx")) {
+                parseExcel();
+              }
+            }}
           >
             Parse
           </button>
@@ -153,10 +220,10 @@ const UploadBulkData = () => {
       )}
 
       {/* Parsed Data */}
-      {jsonData.length > 0 && (
+      {dataArray.length > 0 && (
         <div className="mt-6 w-96 bg-gray-100 text-gray-800 p-4 rounded-md">
           <h3 className="font-bold mb-2">Parsed Data:</h3>
-          <pre className="text-sm">{JSON.stringify(jsonData, null, 2)}</pre>
+          <pre className="text-sm">{JSON.stringify(dataArray, null, 2)}</pre>
         </div>
       )}
     </div>
