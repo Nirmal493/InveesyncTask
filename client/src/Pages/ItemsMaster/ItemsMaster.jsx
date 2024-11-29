@@ -78,10 +78,10 @@ const ItemMaster = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const isEdit = !!formItem.id;
-
+  
     // Initialize errors object
     let validationErrors = {};
-
+  
     // Validate mandatory fields
     if (!formItem.internal_item_name) {
       validationErrors.internal_item_name = "Internal Item Name is required!";
@@ -98,25 +98,38 @@ const ItemMaster = () => {
     if (!formItem.type) {
       validationErrors.type = "Item Type is required!";
     }
-
+  
     // Validate min_buffer and max_buffer constraints
     const minBuffer = Number(formItem.min_buffer);
     const maxBuffer = Number(formItem.max_buffer);
-
+  
     if (minBuffer < 0 || maxBuffer < 0) {
       validationErrors.max_buffer = "Min Buffer and Max Buffer must be greater than or equal to zero!";
     }
-
+  
     if (minBuffer > maxBuffer) {
       validationErrors.max_buffer = "Min Buffer cannot be greater than Max Buffer!";
     }
-
+  
+    // Check for duplicate item names (excluding the item being edited)
+    const duplicateItem = items.find(
+      (item) => item.internal_item_name.toLowerCase() === formItem.internal_item_name.toLowerCase() && item.id !== formItem.id
+    );
+    if (duplicateItem) {
+      validationErrors.internal_item_name = "An item with this name already exists!";
+    }
+  
     // If there are validation errors, update state and return
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
     }
-
+  
+    // If item name is changed and it's a new item, show a warning
+    if (!isEdit && formItem.internal_item_name !== "") {
+      alert(`Item name has been changed to "${formItem.internal_item_name}"`);
+    }
+  
     // Perform API call for add or edit
     try {
       if (isEdit) {
@@ -130,6 +143,63 @@ const ItemMaster = () => {
       console.error("Error saving item:", error);
     }
   };
+  
+
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   const isEdit = !!formItem.id;
+
+  //   // Initialize errors object
+  //   let validationErrors = {};
+
+  //   // Validate mandatory fields
+  //   if (!formItem.internal_item_name) {
+  //     validationErrors.internal_item_name = "Internal Item Name is required!";
+  //   }
+  //   if (!formItem.tenant_id) {
+  //     validationErrors.tenant_id = "Tenant ID is required!";
+  //   }
+  //   if (!formItem.item_description) {
+  //     validationErrors.item_description = "Item Description is required!";
+  //   }
+  //   if (!formItem.uom) {
+  //     validationErrors.uom = "UOM is required!";
+  //   }
+  //   if (!formItem.type) {
+  //     validationErrors.type = "Item Type is required!";
+  //   }
+
+  //   // Validate min_buffer and max_buffer constraints
+  //   const minBuffer = Number(formItem.min_buffer);
+  //   const maxBuffer = Number(formItem.max_buffer);
+
+  //   if (minBuffer < 0 || maxBuffer < 0) {
+  //     validationErrors.max_buffer = "Min Buffer and Max Buffer must be greater than or equal to zero!";
+  //   }
+
+  //   if (minBuffer > maxBuffer) {
+  //     validationErrors.max_buffer = "Min Buffer cannot be greater than Max Buffer!";
+  //   }
+
+  //   // If there are validation errors, update state and return
+  //   if (Object.keys(validationErrors).length > 0) {
+  //     setErrors(validationErrors);
+  //     return;
+  //   }
+
+  //   // Perform API call for add or edit
+  //   try {
+  //     if (isEdit) {
+  //       await axios.put(`${apiUrl}/${formItem.id}`, formItem);
+  //     } else {
+  //       await axios.post(apiUrl, formItem);
+  //     }
+  //     fetchItems();
+  //     closeForm();
+  //   } catch (error) {
+  //     console.error("Error saving item:", error);
+  //   }
+  // };
 
   const handleDelete = async (id) => {
     try {
