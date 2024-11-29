@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import Modal from "react-modal";
 import Select from "react-select";
-import { toast } from "react-toastify";
 
 Modal.setAppElement("#root");
 
@@ -10,6 +9,7 @@ const ItemMaster = () => {
   const [items, setItems] = useState([]);
   const [formItem, setFormItem] = useState(null);
   const [search, setSearch] = useState("");
+  const [errors, setErrors] = useState({}); // State for error messages
 
   const typeOptions = [
     { value: "sell", label: "Sell" },
@@ -28,13 +28,13 @@ const ItemMaster = () => {
       const response = await axios.get(apiUrl);
       setItems(response.data);
     } catch (error) {
-      toast.error("Error fetching items!");
       console.error("Error fetching items:", error);
     }
   };
 
   const handleInputChange = (key, value) => {
     setFormItem({ ...formItem, [key]: value });
+    setErrors({ ...errors, [key]: "" }); // Clear error when user changes value
   };
 
   const handleAdditionalChange = (key, value) => {
@@ -45,6 +45,7 @@ const ItemMaster = () => {
         [key]: value,
       },
     });
+    setErrors({ ...errors, [key]: "" }); // Clear error when user changes value
   };
 
   const openForm = (item = null) => {
@@ -78,31 +79,54 @@ const ItemMaster = () => {
     e.preventDefault();
     const isEdit = !!formItem.id;
 
-    try {
-      if (
-        !formItem.internal_item_name ||
-        !formItem.tenant_id ||
-        !formItem.item_description ||
-        !formItem.uom ||
-        !formItem.type ||
-        !formItem.additional_attributes.avg_weight_needed
-      ) {
-        toast.error("All mandatory fields must be filled!");
-        return;
-      }
+    // Initialize errors object
+    let validationErrors = {};
 
+    // Validate mandatory fields
+    if (!formItem.internal_item_name) {
+      validationErrors.internal_item_name = "Internal Item Name is required!";
+    }
+    if (!formItem.tenant_id) {
+      validationErrors.tenant_id = "Tenant ID is required!";
+    }
+    if (!formItem.item_description) {
+      validationErrors.item_description = "Item Description is required!";
+    }
+    if (!formItem.uom) {
+      validationErrors.uom = "UOM is required!";
+    }
+    if (!formItem.type) {
+      validationErrors.type = "Item Type is required!";
+    }
+
+    // Validate min_buffer and max_buffer constraints
+    const minBuffer = Number(formItem.min_buffer);
+    const maxBuffer = Number(formItem.max_buffer);
+
+    if (minBuffer < 0 || maxBuffer < 0) {
+      validationErrors.max_buffer = "Min Buffer and Max Buffer must be greater than or equal to zero!";
+    }
+
+    if (minBuffer > maxBuffer) {
+      validationErrors.max_buffer = "Min Buffer cannot be greater than Max Buffer!";
+    }
+
+    // If there are validation errors, update state and return
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    // Perform API call for add or edit
+    try {
       if (isEdit) {
         await axios.put(`${apiUrl}/${formItem.id}`, formItem);
-        toast.success("Item updated successfully!");
       } else {
         await axios.post(apiUrl, formItem);
-        toast.success("Item added successfully!");
       }
-
       fetchItems();
       closeForm();
     } catch (error) {
-      toast.error("Error saving item!");
       console.error("Error saving item:", error);
     }
   };
@@ -110,10 +134,8 @@ const ItemMaster = () => {
   const handleDelete = async (id) => {
     try {
       await axios.delete(`${apiUrl}/${id}`);
-      toast.success("Item deleted successfully!");
       fetchItems();
     } catch (error) {
-      toast.error("Error deleting item!");
       console.error("Error deleting item:", error);
     }
   };
@@ -150,12 +172,6 @@ const ItemMaster = () => {
                 <th className="py-2">Item id</th>
                 <th className="py-2">Item Name</th>
                 <th className="py-2">Type</th>
-                {/* <th className="py-2">Description</th> */}
-                {/* <th className="py-2">UOM</th> */}
-                {/* <th className="py-2">Max Buffer</th> */}
-                {/* <th className="py-2">Min Buffer</th> */}
-                {/* <th className="py-2">Customer Name</th> */}
-                {/* <th className="py-2">Avg Weight</th> */}
                 <th className="py-2">Actions</th>
               </tr>
             </thead>
@@ -165,14 +181,6 @@ const ItemMaster = () => {
                   <td className="py-2">{item.id}</td>
                   <td className="py-2">{item.internal_item_name}</td>
                   <td className="py-2">{item.type}</td>
-                  {/* <td className="py-2">{item.item_description}</td>
-                  <td className="py-2">{item.uom}</td>
-                  <td className="py-2">{item.max_buffer}</td>
-                  <td className="py-2">{item.min_buffer}</td>
-                  <td className="py-2">{item.customer_item_name}</td>
-                  <td className="py-2">
-                    {item.additional_attributes?.avg_weight_needed || "N/A"}
-                  </td> */}
                   <td className="py-2">
                     <button
                       className="bg-blue-500 text-white px-3 py-1 rounded mr-2"
@@ -206,9 +214,8 @@ const ItemMaster = () => {
           </h2>
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-              {/* Add input fields */}
-              {[
-                 { label: "Item Id", key: "item_id" },
+              {/* Input fields */}
+              {[ 
                 { label: "Internal Item Name", key: "internal_item_name" },
                 { label: "Tenant ID", key: "tenant_id" },
                 { label: "Item Description", key: "item_description" },
@@ -227,6 +234,9 @@ const ItemMaster = () => {
                     value={formItem[key] || ""}
                     onChange={(e) => handleInputChange(key, e.target.value)}
                   />
+                  {errors[key] && (
+                    <div className="text-red-500 text-sm mt-1">{errors[key]}</div>
+                  )}
                 </div>
               ))}
 
@@ -237,10 +247,13 @@ const ItemMaster = () => {
                   value={typeOptions.find((opt) => opt.value === formItem.type)}
                   onChange={(opt) => handleInputChange("type", opt.value)}
                 />
+                {errors.type && (
+                  <div className="text-red-500 text-sm mt-1">{errors.type}</div>
+                )}
               </div>
 
               {/* Additional Attributes */}
-              {[
+              {[ 
                 { label: "Drawing Revision Number", key: "drawing_revision_number" },
                 { label: "Drawing Revision Date", key: "drawing_revision_date" },
                 { label: "Avg Weight Needed", key: "avg_weight_needed" },
@@ -253,18 +266,19 @@ const ItemMaster = () => {
                     type="text"
                     className="p-2 border border-gray-300 rounded w-full"
                     value={formItem.additional_attributes[key] || ""}
-                    onChange={(e) =>
-                      handleAdditionalChange(key, e.target.value)
-                    }
+                    onChange={(e) => handleAdditionalChange(key, e.target.value)}
                   />
+                  {errors[key] && (
+                    <div className="text-red-500 text-sm mt-1">{errors[key]}</div>
+                  )}
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-end space-x-4 mt-6">
               <button
                 type="button"
-                className="bg-gray-500 text-white px-4 py-2 rounded mr-2"
+                className="bg-gray-300 text-black px-4 py-2 rounded"
                 onClick={closeForm}
               >
                 Cancel
